@@ -1,10 +1,50 @@
+import logging
 import os
+import sys
+import time
+import uuid
 
 import streamlit as st
 from dotenv import load_dotenv
 from groq import APIError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+
+logger = logging.getLogger(__name__)
+
+def generate_response(tutor, messages):
+    request_id = uuid.uuid4().hex[:8]
+    start_time = time.perf_counter()
+    logger.info("Request started | id=%s", request_id)
+
+    try:
+        response = tutor.invoke(messages)
+    except Exception as error:
+        logger.error(
+            "Request failed | id=%s | error_type=%s",
+            request_id,
+            type(error).__name__,
+        )
+        raise
+
+    latency = time.perf_counter() - start_time
+    usage = response.usage_metadata or {}
+    logger.info(
+        "Request completed | id=%s | latency=%.2fs | "
+        "input_tokens=%s | output_tokens=%s | total_tokens=%s",
+        request_id,
+        latency,
+        usage.get("input_tokens"),
+        usage.get("output_tokens"),
+        usage.get("total_tokens"),
+    )
+    return response
 
 
 TUTOR_PROMPT = """You are a patient, encouraging tutor. Use the conversation so
@@ -46,7 +86,9 @@ if prompt and prompt.strip():
             timeout=30,
         )
         try:
-            reply = tutor.invoke([SystemMessage(content=TUTOR_PROMPT), *history, question])
+            reply = generate_response(
+                tutor, [SystemMessage(content=TUTOR_PROMPT), *history, question]
+            )
         except APIError as error:
             status = getattr(error, "status_code", None)
             if status == 401:
@@ -54,7 +96,9 @@ if prompt and prompt.strip():
             elif status == 429:
                 st.error("Groq's rate limit was reached. Wait a moment and try again.")
             else:
-                st.error("Could not get a response from Groq. Check your connection and model, then try again.")
+                st.error(
+                    "Could not get a response from Groq. Check your connection and model, then try again."
+                )
         else:
             if reply.text.strip():
                 st.markdown(reply.text)
