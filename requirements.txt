@@ -1,0 +1,5 @@
+streamlit>=1.45,<2
+langchain-groq>=1,<2
+langchain-core>=1,<2
+groq>=0.30,<2
+python-dotenv>=1,<2
